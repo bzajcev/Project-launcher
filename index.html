@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Project Launcher</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#6b7280;--bd:#e3e6ea;--ac:#2563eb;--ok:#16a34a;--warn:#d97706;--err:#dc2626;--code:#f1f3f5}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#171a21;--fg:#e6e8eb;--mut:#8b93a1;--bd:#262b35;--ac:#4f8cff;--ok:#34d399;--warn:#fbbf24;--err:#f87171;--code:#0d0f13}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--bd);padding:12px 20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+header h1{font-size:16px;margin:0 8px 0 0}
+main{padding:16px 20px;max-width:1300px;margin:0 auto}
+button,input,textarea{font:inherit;color:inherit}
+button{background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:5px 11px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--ac)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.pri{background:var(--ac);border-color:var(--ac);color:#fff}
+button.danger{color:var(--err)}
+input,textarea{background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:6px 9px;width:100%}
+#q{width:220px;margin-left:auto}
+.roots{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px;color:var(--mut);font-size:12px}
+.chip{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--bd);border-radius:99px;padding:2px 4px 2px 10px;font-family:ui-monospace,Menlo,Consolas,monospace}
+.chip.bad{border-color:var(--err);color:var(--err)}
+.chip button{border:0;background:none;padding:0 6px;color:var(--mut)}
+.summary{color:var(--mut);margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card.missing,.card.mismatch{border-color:var(--warn)}
+.top{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.top h2{margin:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{font-size:11px;border-radius:99px;padding:1px 8px;border:1px solid var(--bd);white-space:nowrap;color:var(--mut)}
+.badge.ok{color:var(--ok);border-color:var(--ok)}
+.badge.warn{color:var(--warn);border-color:var(--warn)}
+.badge.run{color:var(--ac);border-color:var(--ac)}
+.badge.run::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ac);margin-right:5px;animation:p 1.2s infinite}
+@keyframes p{50%{opacity:.25}}
+.path,.cmd{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmd{background:var(--code);border-radius:6px;padding:5px 8px;color:var(--fg)}
+.desc{margin:0}.muted{color:var(--mut);font-style:italic}
+.actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
+.sug{border:1px dashed var(--warn);border-radius:8px;padding:8px;font-size:12px;display:flex;flex-direction:column;gap:6px}
+.sug .row{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.sug code{font-family:ui-monospace,Menlo,Consolas,monospace;word-break:break-all}
+pre.log{margin:0;background:var(--code);border-radius:6px;padding:8px;max-height:240px;overflow:auto;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
+dialog{background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:12px;padding:18px;width:min(560px,94vw)}
+dialog::backdrop{background:#0008}
+dialog h3{margin:0 0 12px}
+label{display:block;font-size:12px;color:var(--mut);margin:10px 0 3px}
+.dlgbtns{display:flex;gap:8px;margin-top:16px;justify-content:flex-end;flex-wrap:wrap}
+.list{border:1px solid var(--bd);border-radius:8px;max-height:280px;overflow:auto;margin:10px 0}
+.list div{padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--bd)}
+.list div:last-child{border:0}.list div:hover{background:var(--code)}
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;max-width:90vw;z-index:20}
+#toast.on{opacity:1}
+.empty{text-align:center;color:var(--mut);padding:60px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>Project Launcher</h1>
+  <button class="pri" id="addRoot">+ Folder z projektami</button>
+  <button id="addOne">+ Pojedynczy projekt</button>
+  <button id="rescan">Skanuj ponownie</button>
+  <input id="q" type="search" placeholder="Szukaj…">
+</header>
+<main>
+  <div class="roots" id="roots"></div>
+  <div class="summary" id="summary"></div>
+  <div class="grid" id="grid"></div>
+</main>
+<dialog id="dlg"></dialog>
+<div id="toast"></div>
+<script>
+const $ = s => document.querySelector(s);
+function h(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (k === 'value') e.value = v;
+    else if (v === true) e.setAttribute(k, '');
+    else if (v !== false && v != null) e.setAttribute(k, v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(k));
+  return e;
+}
+async function api(method, url, body) {
+  const r = await fetch(url, { method, headers: { 'X-Launcher': '1', 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+let toastT;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 3500); }
+const act = fn => async (...a) => { try { await fn(...a); await refresh(true); } catch (e) { toast(e.message); } };
+
+let state = { roots: [], projects: [] }, last = '', filter = '';
+const openLogs = new Set(), logCache = {};
+
+async function refresh(force) {
+  try {
+    const s = await api('GET', '/api/state');
+    const sig = JSON.stringify(s);
+    if (sig !== last || force) { last = sig; state = s; render(); }
+  } catch (e) { /* serwer chwilowo niedostępny */ }
+}
+
+function render() {
+  $('#roots').replaceChildren(
+    h('span', {}, 'Skanowane foldery:'),
+    ...(state.roots.length ? state.roots.map(r => h('span', { class: 'chip' + (r.exists ? '' : ' bad'), title: r.exists ? '' : 'Folder niedostępny' },
+      r.path, h('button', { title: 'Usuń z listy skanowanych', onclick: act(() => api('DELETE', '/api/roots', { path: r.path })) }, '×'))) : [h('span', {}, 'brak')])
+  );
+  const ps = state.projects;
+  const run = ps.filter(p => p.running && p.running.alive).length, bad = ps.filter(p => p.status !== 'ok').length;
+  $('#summary').textContent = `${ps.length} projektów · ${run} uruchomionych · ${bad} wymaga uwagi`;
+  const f = filter.toLowerCase();
+  const vis = ps.filter(p => !f || (p.name + ' ' + p.description + ' ' + p.path).toLowerCase().includes(f));
+  $('#grid').replaceChildren(...(vis.length ? vis.map(card) : [h('div', { class: 'empty' }, ps.length ? 'Brak wyników.' : 'Dodaj folder z projektami, aby zacząć.')]));
+  for (const id of openLogs) if (logCache[id] != null) { const el = document.getElementById('log-' + id); if (el) el.textContent = logCache[id]; }
+}
+
+function card(p) {
+  const alive = p.running && p.running.alive;
+  const badge = alive ? h('span', { class: 'badge run' }, 'działa')
+    : p.status === 'ok' ? h('span', { class: 'badge ok' }, 'OK')
+    : h('span', { class: 'badge warn' }, p.status === 'missing' ? 'brak folderu' : 'inny projekt w folderze');
+  const sug = p.status !== 'ok' ? h('div', { class: 'sug' },
+    h('div', {}, p.status === 'missing' ? 'Folder nie istnieje pod zapisaną ścieżką.' : 'Pod tą ścieżką jest już inny projekt (inny identyfikator).'),
+    ...(p.suggestions.length ? p.suggestions.map(s => h('div', { class: 'row' },
+      h('div', {}, h('code', {}, s.path), h('div', { class: 'muted' }, `dopasowanie ${s.score}% — ${s.why.join(', ')}`)),
+      h('button', { class: 'pri', onclick: act(() => api('POST', `/api/projects/${p.id}/relocate`, { path: s.path })) }, 'Użyj')))
+      : [h('div', { class: 'muted' }, 'Nie znaleziono pasującego folderu w skanowanych lokalizacjach.')]),
+    h('div', { class: 'row' }, h('span', {}), h('button', { onclick: () => editDlg(p, true) }, 'Wskaż ścieżkę ręcznie'))) : null;
+  const logOpen = openLogs.has(p.id);
+  return h('article', { class: 'card ' + p.status },
+    h('div', { class: 'top' }, h('h2', { title: p.name }, p.name), badge),
+    h('div', { class: 'path', title: p.path }, p.path),
+    h('p', { class: 'desc' + (p.description ? '' : ' muted') }, p.description || 'Brak opisu (brak README).'),
+    sug,
+    h('div', { class: 'cmd', title: p.command }, p.command ? '$ ' + p.command : '— brak komendy —'),
+    h('div', { class: 'actions' },
+      alive ? h('button', { class: 'danger', onclick: act(() => api('POST', `/api/projects/${p.id}/stop`)) }, '■ Zatrzymaj')
+        : h('button', { class: 'pri', disabled: p.status !== 'ok' || !p.command, onclick: act(async () => { await api('POST', `/api/projects/${p.id}/start`); openLogs.add(p.id); }) }, '▶ Uruchom'),
+      h('button', { onclick: () => { logOpen ? openLogs.delete(p.id) : openLogs.add(p.id); render(); pollLogs(); } }, logOpen ? 'Ukryj logi' : 'Logi'),
+      h('button', { onclick: () => editDlg(p) }, 'Edytuj')),
+    logOpen ? h('pre', { class: 'log', id: 'log-' + p.id }, logCache[p.id] || '') : null);
+}
+
+async function pollLogs() {
+  for (const id of openLogs) {
+    try {
+      const r = await api('GET', `/api/projects/${id}/log`);
+      const el = document.getElementById('log-' + id);
+      const atEnd = el && el.scrollTop + el.clientHeight >= el.scrollHeight - 20;
+      logCache[id] = r.text || '(brak danych — projekt nie był uruchomiony)';
+      if (el && el.textContent !== logCache[id]) { el.textContent = logCache[id]; if (atEnd) el.scrollTop = el.scrollHeight; }
+    } catch { /* */ }
+  }
+}
+
+/* --- okno wyboru folderu --- */
+function pickFolder(start) {
+  return new Promise(resolve => {
+    const dlg = $('#dlg'); let cur = start || '';
+    const done = v => { dlg.close(); resolve(v); };
+    dlg.onclose = () => resolve(null);
+    async function go(p) {
+      try {
+        const d = await api('GET', '/api/browse?path=' + encodeURIComponent(p || ''));
+        cur = d.path;
+        const input = h('input', { value: d.path, onkeydown: e => { if (e.key === 'Enter') go(e.target.value); } });
+        dlg.replaceChildren(h('h3', {}, 'Wybierz folder'), input,
+          h('div', { class: 'list' },
+            d.parent ? h('div', { onclick: () => go(d.parent) }, '↑ ..') : null,
+            ...d.dirs.map(n => h('div', { onclick: () => go(d.path.replace(/[\\/]$/, '') + (state.platform === 'win32' ? '\\' : '/') + n) }, '📁 ' + n))),
+          h('div', { class: 'dlgbtns' }, h('button', { onclick: () => done(null) }, 'Anuluj'),
+            h('button', { class: 'pri', onclick: () => done(input.value.trim() || cur) }, 'Wybierz ten folder')));
+      } catch (e) { toast(e.message); }
+    }
+    dlg.showModal(); go(cur);
+  });
+}
+
+/* --- edycja --- */
+function editDlg(p, focusPath) {
+  const dlg = $('#dlg'); dlg.onclose = null;
+  const name = h('input', { value: p.name }), pth = h('input', { value: p.path }),
+    cmd = h('input', { value: p.command, placeholder: 'np. npm run dev' }), desc = h('textarea', { rows: 4 }, p.description);
+  dlg.replaceChildren(h('h3', {}, 'Edycja projektu'),
+    h('label', {}, 'Nazwa'), name,
+    h('label', {}, 'Ścieżka folderu'),
+    h('div', { style: 'display:flex;gap:6px' }, pth, h('button', { onclick: async () => { const v = await pickFolder(pth.value); editDlg({ ...p, path: v || p.path, name: name.value, command: cmd.value, description: desc.value }); } }, '…')),
+    h('label', {}, 'Komenda uruchomieniowa (wykonywana w folderze projektu)'), cmd,
+    h('label', {}, 'Opis'), desc,
+    h('div', { class: 'dlgbtns' },
+      h('button', { class: 'danger', onclick: act(async () => { if (confirm(`Usunąć „${p.name}” z listy? (pliki projektu zostaną nietknięte)`)) { await api('DELETE', '/api/projects/' + p.id); dlg.close(); } }) }, 'Usuń z listy'),
+      h('button', { onclick: act(async () => { await api('PATCH', '/api/projects/' + p.id, { name: null, description: null, command: null }); dlg.close(); }), title: 'Przywróć nazwę, opis i komendę wykryte z plików' }, 'Resetuj z plików'),
+      h('button', { onclick: () => dlg.close() }, 'Anuluj'),
+      h('button', { class: 'pri', onclick: act(async () => {
+        const orig = state.projects.find(x => x.id === p.id);
+        if (pth.value.trim() !== orig.path) await api('POST', `/api/projects/${p.id}/relocate`, { path: pth.value.trim() });
+        const body = {};
+        if (name.value !== orig.name) body.name = name.value;
+        if (cmd.value !== orig.command) body.command = cmd.value;
+        if (desc.value !== orig.description) body.description = desc.value;
+        if (Object.keys(body).length) await api('PATCH', '/api/projects/' + p.id, body);
+        dlg.close();
+      }) }, 'Zapisz')));
+  if (!dlg.open) dlg.showModal();
+  if (focusPath) pth.focus();
+}
+
+$('#addRoot').onclick = async () => {
+  const d = await pickFolder(state.home); if (!d) return;
+  try { const r = await api('POST', '/api/roots', { path: d }); toast(`Dodano projektów: ${r.added}`); await refresh(true); } catch (e) { toast(e.message); }
+};
+$('#addOne').onclick = async () => {
+  const d = await pickFolder(state.home); if (!d) return;
+  try { await api('POST', '/api/projects', { path: d }); await refresh(true); } catch (e) { toast(e.message); }
+};
+$('#rescan').onclick = act(async () => { const r = await api('POST', '/api/rescan'); toast(`Skan zakończony, nowych projektów: ${r.added}`); });
+$('#q').oninput = e => { filter = e.target.value; render(); };
+
+refresh(true);
+setInterval(refresh, 3000);
+setInterval(pollLogs, 1500);
+</script>
+</body>
+</html>
