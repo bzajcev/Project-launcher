@@ -16,6 +16,7 @@ Na Windows możesz uruchomić `start.bat` dwuklikiem albo z terminala. Opcjonaln
 - **Nazwa** – z nazwy folderu. **Opis** – pierwszy akapit README. **Komenda** – wykrywana z `package.json` (dev/start/serve), `main.py`/`app.py`, `Cargo.toml`, `go.mod`, docker-compose, `Makefile` (cel `run`), `index.html`. Możesz też podać adres strony projektu (`http://` lub `https://`), który pojawi się jako przycisk na karcie. Wszystko edytowalne; ręczne zmiany nie są nadpisywane przy ponownym skanie („Resetuj z plików” przywraca wykryte wartości).
 - **Tożsamość** – w folderze projektu zapisywany jest plik `.project-launcher-id` (UUID), a w `data.json` odcisk: hash listy plików, lista nazw i pierwszy commit gita.
 - **Weryfikacja** – status odświeżany co 3 s. Brak folderu lub inny identyfikator pod ścieżką → ostrzeżenie i propozycje nowej ścieżki (punktacja: ten sam ID 100%, podobna zawartość, ta sama nazwa folderu, ten sam pierwszy commit). Nic nie zmienia się bez Twojego kliknięcia „Użyj”.
+- **Folder projektu** – ikona obok ścieżki otwiera folder w Eksploratorze plików.
 - **Uruchamianie** – komenda w powłoce w folderze projektu, logi na żywo, zatrzymanie ubija całe drzewo procesów. Zamknięcie serwera zatrzymuje uruchomione projekty.
 
 ## Bezpieczeństwo

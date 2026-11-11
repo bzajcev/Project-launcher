@@ -37,6 +37,9 @@ input,textarea{background:var(--card);border:1px solid var(--bd);border-radius:6
 .badge.run::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ac);margin-right:5px;animation:p 1.2s infinite}
 @keyframes p{50%{opacity:.25}}
 .path,.cmd{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pathrow{display:flex;align-items:center;gap:6px;min-width:0}
+.pathrow .path{flex:1;min-width:0}
+.iconbtn{flex:none;padding:3px 6px;line-height:1}
 .cmd{background:var(--code);border-radius:6px;padding:5px 8px;color:var(--fg)}
 .desc{margin:0}.muted{color:var(--mut);font-style:italic}
 .actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
@@ -146,7 +149,15 @@ function card(p) {
   const logOpen = openLogs.has(p.id);
   return h('article', { class: 'card ' + p.status },
     h('div', { class: 'top' }, h('h2', { title: p.name }, p.name), badge),
-    h('div', { class: 'path', title: p.path }, p.path),
+    h('div', { class: 'pathrow' },
+      h('div', { class: 'path', title: p.path }, p.path),
+      h('button', {
+        class: 'iconbtn',
+        title: p.status === 'missing' ? 'Folder projektu jest niedostępny' : 'Otwórz folder projektu',
+        'aria-label': 'Otwórz folder projektu',
+        disabled: p.status === 'missing',
+        onclick: act(() => api('POST', `/api/projects/${p.id}/open-folder`))
+      }, '📂')),
     h('p', { class: 'desc' + (p.description ? '' : ' muted') }, p.description || 'Brak opisu (brak README).'),
     sug,
     h('div', { class: 'cmd', title: p.command }, p.command ? '$ ' + p.command : '— brak komendy —'),

@@ -277,6 +277,17 @@ function state() {
   };
 }
 const getProject = id => { const p = db.projects.find(x => x.id === id); if (!p) throw httpErr(404, 'Nie ma takiego projektu'); return p; };
+function openProjectFolder(dir) {
+  if (!isDir(dir)) throw httpErr(400, 'Folder projektu nie istnieje');
+  const command = WIN
+    ? path.join(process.env.WINDIR || process.env.SystemRoot || 'C:\\Windows', 'explorer.exe')
+    : process.platform === 'darwin' ? 'open' : 'xdg-open';
+  const child = spawn(command, [dir], { detached: true, stdio: 'ignore' });
+  return new Promise((resolve, reject) => {
+    child.once('error', e => reject(httpErr(500, `Nie udało się otworzyć folderu: ${e.message}`)));
+    child.once('spawn', () => { child.unref(); resolve(); });
+  });
+}
 
 const routes = [];
 const route = (m, re, fn) => routes.push([m, re, fn]);
@@ -340,6 +351,7 @@ route('POST', /^\/api\/projects\/([\w-]+)\/relocate$/, (b, q, m) => {
   refreshAuto(p); refreshIdentity(p); sugCache.delete(p.id); save(); return {};
 });
 route('POST', /^\/api\/projects\/([\w-]+)\/start$/, (b, q, m) => { startProject(getProject(m[1])); return {}; });
+route('POST', /^\/api\/projects\/([\w-]+)\/open-folder$/, (b, q, m) => openProjectFolder(getProject(m[1]).path));
 route('POST', /^\/api\/projects\/([\w-]+)\/stop$/, (b, q, m) => { killTree(running.get(getProject(m[1]).id)); return {}; });
 route('GET', /^\/api\/projects\/([\w-]+)\/log$/, (b, q, m) => {
   const r = running.get(getProject(m[1]).id);
