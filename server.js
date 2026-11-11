@@ -8,6 +8,28 @@ const os = require('os');
 const crypto = require('crypto');
 const { spawn, spawnSync } = require('child_process');
 
+function loadEnvFile() {
+  const file = path.join(__dirname, '.env');
+  if (!fs.existsSync(file)) return;
+  const lines = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line || line.startsWith('#')) continue;
+    const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!match) throw new Error(`Niepoprawny wpis w .env, linia ${i + 1}`);
+    const name = match[1], rawValue = match[2].trim();
+    if (process.env[name] !== undefined && process.env[name] !== '') continue;
+    let value = rawValue;
+    if (value.startsWith('"') || value.startsWith("'")) {
+      const quote = value[0];
+      if (value.length < 2 || value[value.length - 1] !== quote) throw new Error(`Niepoprawna wartość w .env, linia ${i + 1}`);
+      value = value.slice(1, -1);
+    } else value = value.replace(/\s+#.*$/, '').trim();
+    process.env[name] = value;
+  }
+}
+loadEnvFile();
+
 const PORT = Number(process.env.PORT) || 4777;
 const HOST = '127.0.0.1';
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json');

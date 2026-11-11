@@ -6,16 +6,11 @@ Lokalna strona z listą projektów z wybranych folderów i przyciskiem uruchomie
 
     node server.js [folder1 folder2 ...]
 
-Otwórz http://localhost:4777 (zmiana portu: `PORT=5000 node server.js`).
+Port 5000 jest ustawiony w `.env`; otwórz http://localhost:5000. Aby zmienić port, edytuj `PORT` w `.env`. Zmienna środowiskowa `PORT`, jeśli jest ustawiona, ma pierwszeństwo.
 
 Na Windows możesz uruchomić `start.bat` dwuklikiem albo z terminala. Opcjonalne foldery przekaż jako argumenty, np. `start.bat "C:\Users\Jan\projekty"`. Wymagany jest Node.js 16 lub nowszy dostępny w `PATH`.
 
-Po uruchomieniu serwer wypisuje losowe hasło logowania w konsoli. Zachowaj je, aby zalogować się do launchera. Możesz zamiast tego ustawić własne hasło w zmiennej środowiskowej `LAUNCHER_PASSWORD` przed uruchomieniem serwera.
-
-W PowerShell:
-
-    $env:LAUNCHER_PASSWORD = "wpisz-wlasne-silne-haslo"
-    node server.js
+Wpisz własne hasło w linii `LAUNCHER_PASSWORD=...` w `.env`. Plik `.env` jest ignorowany przez Git. Jeśli pliku brakuje w nowej kopii projektu, skopiuj `.env.example` do `.env`. Jeśli hasło nie zostanie ustawione w `.env` ani w środowisku procesu, serwer wygeneruje losowe hasło i wypisze je w konsoli. Zmienna środowiskowa `LAUNCHER_PASSWORD`, jeśli jest ustawiona, ma pierwszeństwo przed `.env`.
 
 ## Jak działa
 
