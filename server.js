@@ -34,6 +34,7 @@ const PORT = Number(process.env.PORT) || 4777;
 const HOST = '127.0.0.1';
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json');
 const MARKER = '.project-launcher-id';
+const IGNORE_MARKER = `${MARKER}-ignore`;
 const WIN = process.platform === 'win32';
 const PY = WIN ? 'python' : 'python3';
 const SESSION_COOKIE = 'project_launcher_session';
@@ -44,7 +45,7 @@ const LOGIN_PASSWORD_HASH = crypto.createHash('sha256').update(LOGIN_PASSWORD).d
 const sessions = new Map();
 const failedLogins = new Map();
 const IGNORE = new Set(['node_modules', '.git', 'dist', 'build', 'target', '__pycache__', '.venv', 'venv',
-  '.idea', '.vscode', '.DS_Store', '.next', '.cache', MARKER]);
+  '.idea', '.vscode', '.DS_Store', '.next', '.cache', MARKER, IGNORE_MARKER]);
 const HINTS = ['package.json', 'pyproject.toml', 'requirements.txt', 'setup.py', 'Cargo.toml', 'go.mod', 'Makefile',
   'docker-compose.yml', 'docker-compose.yaml', 'compose.yaml', 'pom.xml', 'build.gradle', 'composer.json', 'Gemfile',
   'deno.json', 'index.html', 'main.py', 'app.py', 'README.md', 'readme.md', '.git'];
@@ -102,12 +103,14 @@ function subdirs(d) {
       .map(e => path.join(d, e.name));
   } catch { return []; }
 }
-const isProjectDir = d => HINTS.some(h => fs.existsSync(path.join(d, h)));
+const isIgnoredProject = d => fs.existsSync(path.join(d, IGNORE_MARKER));
+const isProjectDir = d => !isIgnoredProject(d) && HINTS.some(h => fs.existsSync(path.join(d, h)));
 function findProjects(root, depth = 2) {
   const out = [];
   (function walk(d, lvl) {
     for (const c of subdirs(d)) {
       if (out.length >= 500) return;
+      if (isIgnoredProject(c)) continue;
       if (isProjectDir(c)) out.push(c);
       else if (lvl < depth) walk(c, lvl + 1);
     }
@@ -190,6 +193,7 @@ function statusOf(p) {
 function addProject(dir, { explicit = false } = {}) {
   dir = norm(dir);
   if (!isDir(dir)) throw httpErr(400, 'Folder nie istnieje: ' + dir);
+  if (isIgnoredProject(dir)) throw httpErr(409, 'Projekt jest oznaczony jako ignorowany');
   const same = db.projects.find(p => key(p.path) === key(dir));
   if (same) return null;
   let id = readMarker(dir);
@@ -367,6 +371,28 @@ route('PATCH', /^\/api\/projects\/([\w-]+)$/, (b, q, m) => {
 route('DELETE', /^\/api\/projects\/([\w-]+)$/, (b, q, m) => {
   const p = getProject(m[1]); killTree(running.get(p.id)); running.delete(p.id);
   db.projects = db.projects.filter(x => x !== p); save(); return {};
+});
+route('POST', /^\/api\/projects\/([\w-]+)\/ignore$/, (b, q, m) => {
+  const p = getProject(m[1]);
+  if (statusOf(p) !== 'ok' || readMarker(p.path) !== p.id) throw httpErr(409, 'Nie można oznaczyć projektu: folder lub jego znacznik jest niedostępny');
+  const markerPath = path.join(p.path, MARKER);
+  const ignoredMarkerPath = path.join(p.path, IGNORE_MARKER);
+  if (fs.existsSync(ignoredMarkerPath)) throw httpErr(409, 'Projekt jest już oznaczony jako ignorowany');
+
+  fs.renameSync(markerPath, ignoredMarkerPath);
+  const index = db.projects.indexOf(p);
+  db.projects.splice(index, 1);
+  try { save(); } catch (error) {
+    db.projects.splice(index, 0, p);
+    try { fs.renameSync(ignoredMarkerPath, markerPath); }
+    catch (restoreError) {
+      throw httpErr(500, `Nie udało się zapisać ignorowania ani przywrócić znacznika: ${restoreError.message}`);
+    }
+    throw error;
+  }
+  killTree(running.get(p.id));
+  running.delete(p.id);
+  return {};
 });
 route('POST', /^\/api\/projects\/([\w-]+)\/relocate$/, (b, q, m) => {
   const p = getProject(m[1]); const d = norm(b.path);

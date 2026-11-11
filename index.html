@@ -257,6 +257,12 @@ function editDlg(p, focusPath) {
     h('label', {}, 'Opis'), desc,
     h('label', {}, 'Strona projektu (adres http:// lub https://)'), website,
     h('div', { class: 'dlgbtns' },
+      p.status === 'ok' ? h('button', { class: 'danger', title: 'Oznacz jako ignorowany i usuń z listy', onclick: act(async () => {
+        if (confirm(`Oznaczyć „${p.name}” jako ignorowany? Zmieni się nazwa znacznika, a projekt zostanie usunięty z listy.`)) {
+          await api('POST', `/api/projects/${p.id}/ignore`);
+          dlg.close();
+        }
+      }) }, 'Ignoruj') : null,
       h('button', { class: 'danger', onclick: act(async () => { if (confirm(`Usunąć „${p.name}” z listy? (pliki projektu zostaną nietknięte)`)) { await api('DELETE', '/api/projects/' + p.id); dlg.close(); } }) }, 'Usuń z listy'),
       h('button', { onclick: act(async () => { await api('PATCH', '/api/projects/' + p.id, { name: null, description: null, command: null }); dlg.close(); }), title: 'Przywróć nazwę, opis i komendę wykryte z plików' }, 'Resetuj z plików'),
       h('button', { onclick: () => dlg.close() }, 'Anuluj'),
