@@ -14,6 +14,13 @@ const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json');
 const MARKER = '.project-launcher-id';
 const WIN = process.platform === 'win32';
 const PY = WIN ? 'python' : 'python3';
+const SESSION_COOKIE = 'project_launcher_session';
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const SESSION_TTL_SECONDS = SESSION_TTL_MS / 1000;
+const LOGIN_PASSWORD = process.env.LAUNCHER_PASSWORD || crypto.randomBytes(32).toString('base64url');
+const LOGIN_PASSWORD_HASH = crypto.createHash('sha256').update(LOGIN_PASSWORD).digest();
+const sessions = new Map();
+const failedLogins = new Map();
 const IGNORE = new Set(['node_modules', '.git', 'dist', 'build', 'target', '__pycache__', '.venv', 'venv',
   '.idea', '.vscode', '.DS_Store', '.next', '.cache', MARKER]);
 const HINTS = ['package.json', 'pyproject.toml', 'requirements.txt', 'setup.py', 'Cargo.toml', 'go.mod', 'Makefile',
@@ -360,12 +367,46 @@ route('GET', /^\/api\/projects\/([\w-]+)\/log$/, (b, q, m) => {
 
 /* ---------- HTTP ---------- */
 function guard(req) {
-  // ochrona przed DNS rebinding i CSRF — serwer uruchamia komendy na dysku
+  // Ochrona przed DNS rebinding i CSRF — serwer uruchamia komendy na dysku.
   const host = req.headers.host || '';
   if (!/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(host)) throw httpErr(403, 'Niedozwolony Host');
   const origin = req.headers.origin;
   if (origin && origin !== 'http://' + host) throw httpErr(403, 'Niedozwolony Origin');
-  if (req.method !== 'GET' && req.headers['x-launcher'] !== '1') throw httpErr(403, 'Brak nagłówka X-Launcher');
+}
+function cookieValue(req, name) {
+  const prefix = name + '=';
+  const cookie = (req.headers.cookie || '').split(';').map(part => part.trim()).find(part => part.startsWith(prefix));
+  return cookie ? cookie.slice(prefix.length) : '';
+}
+function requireSession(req) {
+  const id = cookieValue(req, SESSION_COOKIE);
+  const expiresAt = sessions.get(id);
+  if (!expiresAt || expiresAt <= Date.now()) {
+    if (id) sessions.delete(id);
+    throw httpErr(401, 'Zaloguj się do launchera');
+  }
+  return id;
+}
+function login(req, res, body) {
+  const now = Date.now();
+  const address = req.socket.remoteAddress || 'unknown';
+  const attempts = failedLogins.get(address);
+  if (attempts && attempts.blockedUntil > now) throw httpErr(429, 'Zbyt wiele prób logowania. Spróbuj ponownie za minutę.');
+
+  const candidate = crypto.createHash('sha256').update(String(body.password || '')).digest();
+  if (!crypto.timingSafeEqual(candidate, LOGIN_PASSWORD_HASH)) {
+    const current = attempts && attempts.resetAt > now ? attempts : { count: 0, resetAt: now + 60_000, blockedUntil: 0 };
+    current.count++;
+    if (current.count >= 5) current.blockedUntil = now + 60_000;
+    failedLogins.set(address, current);
+    throw httpErr(401, 'Nieprawidłowe hasło');
+  }
+
+  failedLogins.delete(address);
+  const id = crypto.randomBytes(32).toString('hex');
+  sessions.set(id, now + SESSION_TTL_MS);
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_SECONDS}`);
+  return {};
 }
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -388,6 +429,16 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end(fs.readFileSync(path.join(__dirname, 'index.html')));
     }
+    if (req.method === 'POST' && url.pathname === '/api/login') {
+      return send(res, 200, login(req, res, await readBody(req)));
+    }
+    if (req.method === 'POST' && url.pathname === '/api/logout') {
+      const id = requireSession(req);
+      sessions.delete(id);
+      res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`);
+      return send(res, 200, {});
+    }
+    if (url.pathname.startsWith('/api/')) requireSession(req);
     for (const [m, re, fn] of routes) {
       if (m !== req.method) continue;
       const mt = url.pathname.match(re);
@@ -404,6 +455,9 @@ const server = http.createServer(async (req, res) => {
 load();
 for (const a of process.argv.slice(2)) { const d = norm(a); if (isDir(d) && !db.roots.some(r => key(r) === key(d))) db.roots.push(d); }
 rescan();
-server.listen(PORT, HOST, () => console.log(`Project Launcher: http://localhost:${PORT}  (dane: ${DATA_FILE})`));
+server.listen(PORT, HOST, () => {
+  console.log(`Project Launcher: http://localhost:${PORT}  (dane: ${DATA_FILE})`);
+  if (!process.env.LAUNCHER_PASSWORD) console.log(`Hasło logowania (zapisz je): ${LOGIN_PASSWORD}`);
+});
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { stopAll(); setTimeout(() => process.exit(0), 300); });
 process.on('exit', stopAll);

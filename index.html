@@ -8,6 +8,7 @@
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#6b7280;--bd:#e3e6ea;--ac:#2563eb;--ok:#16a34a;--warn:#d97706;--err:#dc2626;--code:#f1f3f5}
 @media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#171a21;--fg:#e6e8eb;--mut:#8b93a1;--bd:#262b35;--ac:#4f8cff;--ok:#34d399;--warn:#fbbf24;--err:#f87171;--code:#0d0f13}}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--bd);padding:12px 20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 header h1{font-size:16px;margin:0 8px 0 0}
@@ -60,25 +61,53 @@ label{display:block;font-size:12px;color:var(--mut);margin:10px 0 3px}
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;max-width:90vw;z-index:20}
 #toast.on{opacity:1}
 .empty{text-align:center;color:var(--mut);padding:60px 0}
+.login{max-width:380px;margin:12vh auto;padding:24px;background:var(--card);border:1px solid var(--bd);border-radius:10px}
+.login h1{font-size:18px;margin:0 0 8px}
+.login p{color:var(--mut)}
+.login button{margin-top:12px}
+#loginError{color:var(--err);min-height:1.45em;margin-bottom:0}
 </style>
 </head>
 <body>
-<header>
+<header id="appHeader" hidden>
   <h1>Project Launcher</h1>
   <button class="pri" id="addRoot">+ Folder z projektami</button>
   <button id="addOne">+ Pojedynczy projekt</button>
   <button id="rescan">Skanuj ponownie</button>
   <input id="q" type="search" placeholder="Szukaj…">
+  <button id="logout">Wyloguj</button>
 </header>
-<main>
+<main id="appMain" hidden>
   <div class="roots" id="roots"></div>
   <div class="summary" id="summary"></div>
   <div class="grid" id="grid"></div>
 </main>
+<section class="login" id="loginPanel">
+  <h1>Project Launcher</h1>
+  <p>Zaloguj się, aby zarządzać projektami.</p>
+  <form id="loginForm">
+    <label for="loginPassword">Hasło</label>
+    <input id="loginPassword" type="password" autocomplete="current-password" required>
+    <button class="pri" type="submit">Zaloguj</button>
+    <p id="loginError" role="alert"></p>
+  </form>
+</section>
 <dialog id="dlg"></dialog>
 <div id="toast"></div>
 <script>
 const $ = s => document.querySelector(s);
+let authenticated = false;
+function setAuthenticated(value) {
+  const changed = authenticated !== value;
+  authenticated = value;
+  $('#appHeader').hidden = !value;
+  $('#appMain').hidden = !value;
+  $('#loginPanel').hidden = value;
+  if (!value && changed) {
+    $('#loginPassword').value = '';
+    $('#loginError').textContent = '';
+  }
+}
 function projectWebsite(value) {
   try {
     const url = new URL(value);
@@ -98,9 +127,14 @@ function h(tag, props, ...kids) {
   return e;
 }
 async function api(method, url, body) {
-  const r = await fetch(url, { method, headers: { 'X-Launcher': '1', 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch(url, { method, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || r.statusText);
+  if (!r.ok) {
+    const error = new Error(j.error || r.statusText);
+    error.status = r.status;
+    if (r.status === 401 && authenticated) setAuthenticated(false);
+    throw error;
+  }
   return j;
 }
 let toastT;
@@ -113,9 +147,10 @@ const openLogs = new Set(), logCache = {};
 async function refresh(force) {
   try {
     const s = await api('GET', '/api/state');
+    setAuthenticated(true);
     const sig = JSON.stringify(s);
     if (sig !== last || force) { last = sig; state = s; render(); }
-  } catch (e) { /* serwer chwilowo niedostępny */ }
+  } catch (e) { if (e.status !== 401) { /* serwer chwilowo niedostępny */ } }
 }
 
 function render() {
@@ -257,9 +292,27 @@ $('#addOne').onclick = async () => {
 $('#rescan').onclick = act(async () => { const r = await api('POST', '/api/rescan'); toast(`Skan zakończony, nowych projektów: ${r.added}`); });
 $('#q').oninput = e => { filter = e.target.value; render(); };
 
+$('#loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  try {
+    await api('POST', '/api/login', { password: $('#loginPassword').value });
+    $('#loginPassword').value = '';
+    setAuthenticated(true);
+    await refresh(true);
+  } catch (error) {
+    $('#loginError').textContent = error.message;
+  }
+});
+$('#logout').onclick = async () => {
+  try {
+    await api('POST', '/api/logout');
+    setAuthenticated(false);
+  } catch (error) { toast(error.message); }
+};
+
 refresh(true);
-setInterval(refresh, 3000);
-setInterval(pollLogs, 1500);
+setInterval(() => { if (authenticated) refresh(); }, 3000);
+setInterval(() => { if (authenticated) pollLogs(); }, 1500);
 </script>
 </body>
 </html>
