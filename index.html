@@ -40,6 +40,8 @@ input,textarea{background:var(--card);border:1px solid var(--bd);border-radius:6
 .cmd{background:var(--code);border-radius:6px;padding:5px 8px;color:var(--fg)}
 .desc{margin:0}.muted{color:var(--mut);font-style:italic}
 .actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
+.actions a{display:inline-block;background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:5px 11px;color:inherit;text-decoration:none}
+.actions a:hover{border-color:var(--ac)}
 .sug{border:1px dashed var(--warn);border-radius:8px;padding:8px;font-size:12px;display:flex;flex-direction:column;gap:6px}
 .sug .row{display:flex;gap:8px;align-items:center;justify-content:space-between}
 .sug code{font-family:ui-monospace,Menlo,Consolas,monospace;word-break:break-all}
@@ -74,6 +76,12 @@ label{display:block;font-size:12px;color:var(--mut);margin:10px 0 3px}
 <div id="toast"></div>
 <script>
 const $ = s => document.querySelector(s);
+function projectWebsite(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch { return null; }
+}
 function h(tag, props, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props || {})) {
@@ -124,6 +132,7 @@ function render() {
 
 function card(p) {
   const alive = p.running && p.running.alive;
+  const website = projectWebsite(p.website);
   const badge = alive ? h('span', { class: 'badge run' }, 'działa')
     : p.status === 'ok' ? h('span', { class: 'badge ok' }, 'OK')
     : h('span', { class: 'badge warn' }, p.status === 'missing' ? 'brak folderu' : 'inny projekt w folderze');
@@ -144,6 +153,10 @@ function card(p) {
     h('div', { class: 'actions' },
       alive ? h('button', { class: 'danger', onclick: act(() => api('POST', `/api/projects/${p.id}/stop`)) }, '■ Zatrzymaj')
         : h('button', { class: 'pri', disabled: p.status !== 'ok' || !p.command, onclick: act(async () => { await api('POST', `/api/projects/${p.id}/start`); openLogs.add(p.id); }) }, '▶ Uruchom'),
+      website ? h('a', { href: website, target: '_blank', rel: 'noopener noreferrer' }, 'Strona projektu') : null,
+      p.status === 'missing' ? h('button', { class: 'danger', onclick: act(async () => {
+        if (confirm(`Folder projektu „${p.name}” nie istnieje. Usunąć go z listy?`)) await api('DELETE', '/api/projects/' + p.id);
+      }) }, 'Usuń z listy') : null,
       h('button', { onclick: () => { logOpen ? openLogs.delete(p.id) : openLogs.add(p.id); render(); pollLogs(); } }, logOpen ? 'Ukryj logi' : 'Logi'),
       h('button', { onclick: () => editDlg(p) }, 'Edytuj')),
     logOpen ? h('pre', { class: 'log', id: 'log-' + p.id }, logCache[p.id] || '') : null);
@@ -188,24 +201,33 @@ function pickFolder(start) {
 function editDlg(p, focusPath) {
   const dlg = $('#dlg'); dlg.onclose = null;
   const name = h('input', { value: p.name }), pth = h('input', { value: p.path }),
-    cmd = h('input', { value: p.command, placeholder: 'np. npm run dev' }), desc = h('textarea', { rows: 4 }, p.description);
+    cmd = h('input', { value: p.command, placeholder: 'np. npm run dev' }), desc = h('textarea', { rows: 4 }, p.description),
+    website = h('input', { type: 'url', value: p.website || '', placeholder: 'https://example.com', oninput: e => e.currentTarget.setCustomValidity('') });
   dlg.replaceChildren(h('h3', {}, 'Edycja projektu'),
     h('label', {}, 'Nazwa'), name,
     h('label', {}, 'Ścieżka folderu'),
-    h('div', { style: 'display:flex;gap:6px' }, pth, h('button', { onclick: async () => { const v = await pickFolder(pth.value); editDlg({ ...p, path: v || p.path, name: name.value, command: cmd.value, description: desc.value }); } }, '…')),
+    h('div', { style: 'display:flex;gap:6px' }, pth, h('button', { onclick: async () => { const v = await pickFolder(pth.value); editDlg({ ...p, path: v || p.path, name: name.value, command: cmd.value, description: desc.value, website: website.value }); } }, '…')),
     h('label', {}, 'Komenda uruchomieniowa (wykonywana w folderze projektu)'), cmd,
     h('label', {}, 'Opis'), desc,
+    h('label', {}, 'Strona projektu (adres http:// lub https://)'), website,
     h('div', { class: 'dlgbtns' },
       h('button', { class: 'danger', onclick: act(async () => { if (confirm(`Usunąć „${p.name}” z listy? (pliki projektu zostaną nietknięte)`)) { await api('DELETE', '/api/projects/' + p.id); dlg.close(); } }) }, 'Usuń z listy'),
       h('button', { onclick: act(async () => { await api('PATCH', '/api/projects/' + p.id, { name: null, description: null, command: null }); dlg.close(); }), title: 'Przywróć nazwę, opis i komendę wykryte z plików' }, 'Resetuj z plików'),
       h('button', { onclick: () => dlg.close() }, 'Anuluj'),
       h('button', { class: 'pri', onclick: act(async () => {
         const orig = state.projects.find(x => x.id === p.id);
+        const websiteValue = website.value.trim();
+        if (websiteValue && !projectWebsite(websiteValue)) {
+          website.setCustomValidity('Podaj pełny adres strony zaczynający się od http:// lub https://.');
+          website.reportValidity();
+          return;
+        }
         if (pth.value.trim() !== orig.path) await api('POST', `/api/projects/${p.id}/relocate`, { path: pth.value.trim() });
         const body = {};
         if (name.value !== orig.name) body.name = name.value;
         if (cmd.value !== orig.command) body.command = cmd.value;
         if (desc.value !== orig.description) body.description = desc.value;
+        if (websiteValue !== (orig.website || '')) body.website = websiteValue;
         if (Object.keys(body).length) await api('PATCH', '/api/projects/' + p.id, body);
         dlg.close();
       }) }, 'Zapisz')));

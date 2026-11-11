@@ -174,7 +174,7 @@ function addProject(dir, { explicit = false } = {}) {
   }
   if (!id) id = crypto.randomUUID();
   writeMarker(dir, id);
-  const p = { id, name: prettyName(dir), path: dir, description: '', command: '', edited: {}, added: new Date().toISOString() };
+  const p = { id, name: prettyName(dir), path: dir, description: '', command: '', website: '', edited: {}, added: new Date().toISOString() };
   refreshAuto(p); refreshIdentity(p);
   db.projects.push(p); save();
   return p;
@@ -268,7 +268,7 @@ function state() {
     projects: db.projects.map(p => {
       const status = statusOf(p); const r = running.get(p.id);
       return {
-        id: p.id, name: p.name, path: p.path, description: p.description, command: p.command,
+        id: p.id, name: p.name, path: p.path, description: p.description, command: p.command, website: p.website || '',
         edited: p.edited || {}, status, verifiedAt: p.verifiedAt,
         running: r ? { alive: r.alive, pid: r.pid, startedAt: r.startedAt, exitCode: r.exitCode } : null,
         suggestions: status === 'ok' ? [] : suggest(p),
@@ -310,11 +310,18 @@ route('POST', /^\/api\/projects$/, b => {
 });
 route('PATCH', /^\/api\/projects\/([\w-]+)$/, (b, q, m) => {
   const p = getProject(m[1]); p.edited = p.edited || {};
+  const website = 'website' in b ? String(b.website || '').trim() : undefined;
+  if (website) {
+    let url;
+    try { url = new URL(website); } catch { throw httpErr(400, 'Niepoprawny adres strony projektu'); }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') throw httpErr(400, 'Adres strony projektu musi używać http lub https');
+  }
   for (const f of ['name', 'description', 'command']) {
     if (!(f in b)) continue;
     if (b[f] === null) { p.edited[f] = false; if (f === 'name') p.name = prettyName(p.path); else if (isDir(p.path)) refreshAuto(p); }
     else { p[f] = String(b[f]); p.edited[f] = true; }
   }
+  if (website !== undefined) p.website = website;
   save(); return {};
 });
 route('DELETE', /^\/api\/projects\/([\w-]+)$/, (b, q, m) => {
