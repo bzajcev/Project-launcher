@@ -287,7 +287,7 @@ function killTree(r) {
     if (WIN) spawnSync('taskkill', ['/pid', String(r.pid), '/T', '/F']);
     else {
       try { process.kill(-r.pid, 'SIGTERM'); } catch { r.child.kill('SIGTERM'); }
-      setTimeout(() => { if (r.alive) { try { process.kill(-r.pid, 'SIGKILL'); } catch { /* */ } } }, 5000).unref();
+      setTimeout(() => { if (r.alive) { try { process.kill(-r.pid, 'SIGKILL'); } catch { /* */ } } }, 8005).unref();
     }
   } catch { /* */ }
 }

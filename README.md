@@ -6,7 +6,7 @@ Lokalna strona z listą projektów z wybranych folderów i przyciskiem uruchomie
 
     node server.js [folder1 folder2 ...]
 
-Port 5000 jest ustawiony w `.env`; otwórz http://localhost:5000. Aby zmienić port, edytuj `PORT` w `.env`. Zmienna środowiskowa `PORT`, jeśli jest ustawiona, ma pierwszeństwo.
+Port 8787 jest ustawiony w `.env`; otwórz http://localhost:8787. Aby zmienić port, edytuj `PORT` w `.env`. Zmienna środowiskowa `PORT`, jeśli jest ustawiona, ma pierwszeństwo.
 
 Na Windows możesz uruchomić `start.bat` dwuklikiem albo z terminala. Opcjonalne foldery przekaż jako argumenty, np. `start.bat "C:\Users\Jan\projekty"`. Wymagany jest Node.js 16 lub nowszy dostępny w `PATH`.
 
