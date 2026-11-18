@@ -20,6 +20,8 @@ Wpisz własne hasło w linii `LAUNCHER_PASSWORD=...` w `.env`. Plik `.env` jest 
 - **Ignorowanie** – przycisk „Ignoruj” zmienia nazwę znacznika na `.project-launcher-id-ignore`, usuwa projekt z `data.json` i pomija go przy kolejnych skanach. Aby przywrócić wykrywanie, zmień nazwę znacznika z powrotem na `.project-launcher-id`.
 - **Weryfikacja** – status odświeżany co 3 s. Brak folderu lub inny identyfikator pod ścieżką → ostrzeżenie i propozycje nowej ścieżki (punktacja: ten sam ID 100%, podobna zawartość, ta sama nazwa folderu, ten sam pierwszy commit). Nic nie zmienia się bez Twojego kliknięcia „Użyj”.
 - **Folder projektu** – ikona obok ścieżki otwiera folder w Eksploratorze plików.
+- **Szybkie linki** – dodawaj linki z nazwą i opisem. W adresie możesz użyć `{{param}}` i ustawić nazwę pola parametru. Wartość wpisana przy linku jest bezpiecznie kodowana i wstawiana w adres. Linki można edytować i usuwać.
+- **Foldery** – twórz edytowalną listę skrótów do folderów. Każdy ma nazwę i opis widoczny po najechaniu; przycisk otwiera folder w Eksploratorze plików.
 - **Uruchamianie** – komenda w powłoce w folderze projektu, logi na żywo, zatrzymanie ubija całe drzewo procesów. Zamknięcie serwera zatrzymuje uruchomione projekty.
 
 ## Bezpieczeństwo

@@ -26,7 +26,19 @@ input,textarea{background:var(--card);border:1px solid var(--bd);border-radius:6
 .chip.bad{border-color:var(--err);color:var(--err)}
 .chip button{border:0;background:none;padding:0 6px;color:var(--mut)}
 .summary{color:var(--mut);margin-bottom:12px}
+.section{margin:18px 0}
+.sectionhead{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.sectionhead h2{font-size:15px;margin:0}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px}
+.quickgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:10px}
+.quickitem{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:10px;min-width:0}
+.quickitem h3{font-size:14px;margin:0 0 5px}
+.quickitem .path{margin:5px 0;display:block}
+.quickitem .quickactions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.quickitem .quickactions a{color:inherit;text-decoration:none}
+.quickitem .quickactions a,.quickitem .quickactions button{background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:4px 9px}
+.quickitem .quickactions a:hover,.quickitem .quickactions button:hover{border-color:var(--ac)}
+.quickitem input{margin-top:5px}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px;min-width:0}
 .card.missing,.card.mismatch{border-color:var(--warn)}
 .top{display:flex;gap:8px;align-items:center;justify-content:space-between}
@@ -73,12 +85,22 @@ label{display:block;font-size:12px;color:var(--mut);margin:10px 0 3px}
   <h1>Project Launcher</h1>
   <button class="pri" id="addRoot">+ Folder z projektami</button>
   <button id="addOne">+ Pojedynczy projekt</button>
+  <button id="addLink">+ Link</button>
+  <button id="addFolder">+ Folder</button>
   <button id="rescan">Skanuj ponownie</button>
   <input id="q" type="search" placeholder="Szukaj…">
   <button id="logout">Wyloguj</button>
 </header>
 <main id="appMain" hidden>
   <div class="roots" id="roots"></div>
+  <section class="section" id="linksSection">
+    <div class="sectionhead"><h2>Szybkie linki</h2></div>
+    <div class="quickgrid" id="linksGrid"></div>
+  </section>
+  <section class="section" id="foldersSection">
+    <div class="sectionhead"><h2>Foldery</h2></div>
+    <div class="quickgrid" id="foldersGrid"></div>
+  </section>
   <div class="summary" id="summary"></div>
   <div class="grid" id="grid"></div>
 </main>
@@ -93,6 +115,7 @@ label{display:block;font-size:12px;color:var(--mut);margin:10px 0 3px}
   </form>
 </section>
 <dialog id="dlg"></dialog>
+<dialog id="pickerDlg"></dialog>
 <div id="toast"></div>
 <script>
 const $ = s => document.querySelector(s);
@@ -141,7 +164,7 @@ let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 3500); }
 const act = fn => async (...a) => { try { await fn(...a); await refresh(true); } catch (e) { toast(e.message); } };
 
-let state = { roots: [], projects: [] }, last = '', filter = '';
+let state = { roots: [], projects: [], links: [], folders: [] }, last = '', filter = '';
 const openLogs = new Set(), logCache = {};
 
 async function refresh(force) {
@@ -159,6 +182,11 @@ function render() {
     ...(state.roots.length ? state.roots.map(r => h('span', { class: 'chip' + (r.exists ? '' : ' bad'), title: r.exists ? '' : 'Folder niedostępny' },
       r.path, h('button', { title: 'Usuń z listy skanowanych', onclick: act(() => api('DELETE', '/api/roots', { path: r.path })) }, '×'))) : [h('span', {}, 'brak')])
   );
+  const links = state.links || [], folders = state.folders || [];
+  $('#linksSection').hidden = !links.length;
+  $('#linksGrid').replaceChildren(...links.map(linkCard));
+  $('#foldersSection').hidden = !folders.length;
+  $('#foldersGrid').replaceChildren(...folders.map(folderCard));
   const ps = state.projects;
   const run = ps.filter(p => p.running && p.running.alive).length, bad = ps.filter(p => p.status !== 'ok').length;
   $('#summary').textContent = `${ps.length} projektów · ${run} uruchomionych · ${bad} wymaga uwagi`;
@@ -166,6 +194,43 @@ function render() {
   const vis = ps.filter(p => !f || (p.name + ' ' + p.description + ' ' + p.path).toLowerCase().includes(f));
   $('#grid').replaceChildren(...(vis.length ? vis.map(card) : [h('div', { class: 'empty' }, ps.length ? 'Brak wyników.' : 'Dodaj folder z projektami, aby zacząć.')]));
   for (const id of openLogs) if (logCache[id] != null) { const el = document.getElementById('log-' + id); if (el) el.textContent = logCache[id]; }
+}
+
+function linkCard(link) {
+  const parameter = link.parameterName ? h('input', {
+    type: 'text', placeholder: link.parameterName, 'aria-label': link.parameterName,
+    onkeydown: e => { if (e.key === 'Enter') e.currentTarget.parentElement.querySelector('[data-open-link]').click(); }
+  }) : null;
+  const open = () => {
+    const value = parameter ? parameter.value.trim() : '';
+    if (parameter && !value) { parameter.focus(); toast(`Wpisz: ${link.parameterName}`); return; }
+    const address = link.url.replace('{{param}}', encodeURIComponent(value));
+    const safe = projectWebsite(address);
+    if (!safe) { toast('Niepoprawny adres linku'); return; }
+    window.open(safe, '_blank', 'noopener,noreferrer');
+  };
+  return h('article', { class: 'quickitem', title: link.description || '' },
+    h('h3', {}, link.name),
+    link.description ? h('div', { class: 'muted' }, link.description) : null,
+    parameter,
+    h('div', { class: 'quickactions' },
+      h('button', { 'data-open-link': '', onclick: open }, 'Otwórz'),
+      h('button', { onclick: () => editLinkDlg(link) }, 'Edytuj'),
+      h('button', { class: 'danger', onclick: act(async () => {
+        if (confirm(`Usunąć link „${link.name}”?`)) await api('DELETE', `/api/links/${link.id}`);
+      }) }, 'Usuń')));
+}
+
+function folderCard(folder) {
+  return h('article', { class: 'quickitem', title: folder.description || folder.path },
+    h('h3', {}, folder.name),
+    h('div', { class: 'path', title: folder.path }, folder.path),
+    h('div', { class: 'quickactions' },
+      h('button', { class: 'pri', disabled: !folder.exists, title: folder.description || 'Otwórz folder', onclick: act(() => api('POST', `/api/folders/${folder.id}/open`)) }, '📂 Otwórz'),
+      h('button', { onclick: () => editFolderDlg(folder) }, 'Edytuj'),
+      h('button', { class: 'danger', onclick: act(async () => {
+        if (confirm(`Usunąć folder „${folder.name}” z listy?`)) await api('DELETE', `/api/folders/${folder.id}`);
+      }) }, 'Usuń')));
 }
 
 function card(p) {
@@ -223,7 +288,7 @@ async function pollLogs() {
 /* --- okno wyboru folderu --- */
 function pickFolder(start) {
   return new Promise(resolve => {
-    const dlg = $('#dlg'); let cur = start || '';
+    const dlg = $('#pickerDlg'); let cur = start || '';
     const done = v => { dlg.close(); resolve(v); };
     dlg.onclose = () => resolve(null);
     async function go(p) {
@@ -287,6 +352,59 @@ function editDlg(p, focusPath) {
   if (focusPath) pth.focus();
 }
 
+function editLinkDlg(link) {
+  const dlg = $('#dlg'); dlg.onclose = null;
+  const name = h('input', { value: link ? link.name : '', placeholder: 'Nazwa linku' });
+  const url = h('input', { value: link ? link.url : '', placeholder: 'https://example.com/search?id={{param}}' });
+  const parameterName = h('input', { value: link ? link.parameterName || '' : '', placeholder: '(opcjonalne)' });
+  const description = h('textarea', { rows: 2, placeholder: 'Krótki opis linku' }, link ? link.description || '' : '');
+  dlg.replaceChildren(h('h3', {}, link ? 'Edycja linku' : 'Dodaj link'),
+    h('label', {}, 'Nazwa'), name,
+    h('label', {}, 'Adres (wstaw {{param}} w miejscu parametru)'), url,
+    h('label', {}, 'Nazwa pola parametru (opcjonalnie)'), parameterName,
+    h('label', {}, 'Opis'), description,
+    h('div', { class: 'muted' }, 'Wartość z pola parametru zastąpi {{param}} w adresie.'),
+    h('div', { class: 'dlgbtns' },
+      h('button', { onclick: () => dlg.close() }, 'Anuluj'),
+      h('button', { class: 'pri', onclick: act(async () => {
+        const body = { name: name.value, url: url.value, parameterName: parameterName.value, description: description.value };
+        await api(link ? 'PATCH' : 'POST', link ? `/api/links/${link.id}` : '/api/links', body);
+        dlg.close();
+      }) }, 'Zapisz')));
+  if (!dlg.open) dlg.showModal();
+  name.focus();
+}
+
+function editFolderDlg(folder) {
+  const dlg = $('#dlg'); dlg.onclose = null;
+  const name = h('input', { value: folder ? folder.name : '', placeholder: 'np. Projekty' });
+  const pth = h('input', { value: folder ? folder.path : '', placeholder: 'Wybierz folder' });
+  const description = h('textarea', { rows: 2, placeholder: 'Krótki opis widoczny po najechaniu' }, folder ? folder.description || '' : '');
+  dlg.replaceChildren(h('h3', {}, folder ? 'Edycja folderu' : 'Dodaj folder'),
+    h('label', {}, 'Nazwa'), name,
+    h('label', {}, 'Ścieżka folderu'),
+    h('div', { style: 'display:flex;gap:6px' }, pth, h('button', { onclick: async () => {
+      const selected = await pickFolder(pth.value || state.home);
+      if (selected) pth.value = selected;
+    } }, '…')),
+    h('label', {}, 'Opis (pokazywany po najechaniu)'), description,
+    h('div', { class: 'dlgbtns' },
+      folder ? h('button', { class: 'danger', onclick: act(async () => {
+        if (confirm(`Usunąć folder „${folder.name}” z listy?`)) {
+          await api('DELETE', `/api/folders/${folder.id}`);
+          dlg.close();
+        }
+      }) }, 'Usuń') : null,
+      h('button', { onclick: () => dlg.close() }, 'Anuluj'),
+      h('button', { class: 'pri', onclick: act(async () => {
+        const body = { name: name.value, path: pth.value, description: description.value };
+        await api(folder ? 'PATCH' : 'POST', folder ? `/api/folders/${folder.id}` : '/api/folders', body);
+        dlg.close();
+      }) }, 'Zapisz')));
+  if (!dlg.open) dlg.showModal();
+  name.focus();
+}
+
 $('#addRoot').onclick = async () => {
   const d = await pickFolder(state.home); if (!d) return;
   try { const r = await api('POST', '/api/roots', { path: d }); toast(`Dodano projektów: ${r.added}`); await refresh(true); } catch (e) { toast(e.message); }
@@ -295,6 +413,8 @@ $('#addOne').onclick = async () => {
   const d = await pickFolder(state.home); if (!d) return;
   try { await api('POST', '/api/projects', { path: d }); await refresh(true); } catch (e) { toast(e.message); }
 };
+$('#addLink').onclick = () => editLinkDlg(null);
+$('#addFolder').onclick = () => editFolderDlg(null);
 $('#rescan').onclick = act(async () => { const r = await api('POST', '/api/rescan'); toast(`Skan zakończony, nowych projektów: ${r.added}`); });
 $('#q').oninput = e => { filter = e.target.value; render(); };
 

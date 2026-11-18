@@ -59,10 +59,11 @@ const norm = p => path.resolve(String(p || '').trim().replace(/^~(?=$|[\\/])/, o
 const sha = s => crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
 
 /* ---------- storage ---------- */
-let db = { roots: [], projects: [] };
+let db = { roots: [], projects: [], links: [], folders: [] };
 function load() {
   try { db = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { /* nowy plik */ }
   db.roots = db.roots || []; db.projects = db.projects || [];
+  db.links = db.links || []; db.folders = db.folders || [];
 }
 function save() {
   const tmp = DATA_FILE + '.tmp';
@@ -298,6 +299,8 @@ function state() {
   return {
     platform: process.platform, home: os.homedir(),
     roots: db.roots.map(r => ({ path: r, exists: isDir(r) })),
+    links: db.links,
+    folders: db.folders.map(f => ({ ...f, exists: isDir(f.path) })),
     projects: db.projects.map(p => {
       const status = statusOf(p); const r = running.get(p.id);
       return {
@@ -321,11 +324,64 @@ function openProjectFolder(dir) {
     child.once('spawn', () => { child.unref(); resolve(); });
   });
 }
+function validateLink(body) {
+  const name = String(body.name || '').trim();
+  const url = String(body.url || '').trim();
+  const description = String(body.description || '').trim();
+  const parameterName = String(body.parameterName || '').trim();
+  if (!name) throw httpErr(400, 'Podaj nazwę linku');
+  if (!url) throw httpErr(400, 'Podaj adres URL');
+  if ((url.match(/\{\{param\}\}/g) || []).length > 1) throw httpErr(400, 'Adres może zawierać tylko jeden znacznik {{param}}');
+  if (parameterName && !url.includes('{{param}}')) throw httpErr(400, 'Adres musi zawierać {{param}}, aby użyć pola parametru');
+  if (url.includes('{{param}}') && !parameterName) throw httpErr(400, 'Podaj nazwę pola parametru');
+  let parsed;
+  try { parsed = new URL(url.replace('{{param}}', 'wartosc')); } catch { throw httpErr(400, 'Niepoprawny adres URL'); }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw httpErr(400, 'Adres musi używać http lub https');
+  return { name, url, description, parameterName };
+}
+const getFolder = id => { const f = db.folders.find(x => x.id === id); if (!f) throw httpErr(404, 'Nie ma takiego folderu'); return f; };
+function folderValues(body) {
+  const name = String(body.name || '').trim();
+  const description = String(body.description || '').trim();
+  const folderPath = String(body.path || '').trim();
+  if (!name) throw httpErr(400, 'Podaj nazwę folderu');
+  if (!folderPath) throw httpErr(400, 'Wybierz folder');
+  const dir = norm(folderPath);
+  if (!isDir(dir)) throw httpErr(400, 'Folder nie istnieje: ' + dir);
+  return { name, description, path: dir };
+}
 
 const routes = [];
 const route = (m, re, fn) => routes.push([m, re, fn]);
 
 route('GET', /^\/api\/state$/, () => state());
+route('POST', /^\/api\/links$/, b => {
+  const link = { id: crypto.randomUUID(), ...validateLink(b) };
+  db.links.push(link); save(); return { id: link.id };
+});
+route('PATCH', /^\/api\/links\/([\w-]+)$/, (b, q, m) => {
+  const link = db.links.find(x => x.id === m[1]);
+  if (!link) throw httpErr(404, 'Nie ma takiego linku');
+  Object.assign(link, validateLink({ ...link, ...b })); save(); return {};
+});
+route('DELETE', /^\/api\/links\/([\w-]+)$/, (b, q, m) => {
+  const link = db.links.find(x => x.id === m[1]);
+  if (!link) throw httpErr(404, 'Nie ma takiego linku');
+  db.links = db.links.filter(x => x !== link); save(); return {};
+});
+route('POST', /^\/api\/folders$/, b => {
+  const folder = { id: crypto.randomUUID(), ...folderValues(b) };
+  db.folders.push(folder); save(); return { id: folder.id };
+});
+route('PATCH', /^\/api\/folders\/([\w-]+)$/, (b, q, m) => {
+  const folder = getFolder(m[1]);
+  Object.assign(folder, folderValues({ ...folder, ...b })); save(); return {};
+});
+route('DELETE', /^\/api\/folders\/([\w-]+)$/, (b, q, m) => {
+  const folder = getFolder(m[1]);
+  db.folders = db.folders.filter(x => x !== folder); save(); return {};
+});
+route('POST', /^\/api\/folders\/([\w-]+)\/open$/, (b, q, m) => openProjectFolder(getFolder(m[1]).path));
 route('GET', /^\/api\/browse$/, (b, q) => {
   const d = norm(q.get('path') || os.homedir());
   if (!isDir(d)) throw httpErr(400, 'To nie jest folder');
